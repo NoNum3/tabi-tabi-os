@@ -86,7 +86,7 @@ export function Mainmenu() {
         <MenubarMenu>
           <div className="px-1">
             <Image
-              src="/icons/coffee.png"
+              src="/icons/icon192.png"
               alt="coffee"
               width={20}
               height={20}

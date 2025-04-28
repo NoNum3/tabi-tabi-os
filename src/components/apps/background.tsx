@@ -26,7 +26,6 @@ const backgrounds = [
   "/background/bg-4.png",
   "/background/bg-5.png",
   "/background/bg-6.png",
-  "/background/bg-7.png",
 ];
 
 const fitOptions: { value: BackgroundFit; label: string }[] = [
