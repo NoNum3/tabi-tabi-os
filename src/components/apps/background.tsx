@@ -1,21 +1,21 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useAtom, useSetAtom } from "jotai";
 import {
-  backgroundSettingsAtom,
+  applyPreviewBackgroundAtom,
   BackgroundFit,
   BackgroundSettings,
+  backgroundSettingsAtom,
   previewBackgroundAtom,
-  applyPreviewBackgroundAtom,
 } from "@/atoms/backgroundAtom";
 import { playSound } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -48,8 +48,9 @@ export const BackgroundChanger: React.FC<BackgroundChangerProps> = ({
   const applyPreview = useSetAtom(applyPreviewBackgroundAtom);
 
   // Initialize temp settings to saved settings
-  const [tempSettings, setTempSettings] =
-    useState<BackgroundSettings>(savedSettings);
+  const [tempSettings, setTempSettings] = useState<BackgroundSettings>(
+    savedSettings,
+  );
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -190,19 +191,21 @@ export const BackgroundChanger: React.FC<BackgroundChangerProps> = ({
                 }
               }}
             >
-              {uploadedImage ? (
-                <Image
-                  src={uploadedImage}
-                  alt="Uploaded Background"
-                  fill
-                  sizes="(max-width: 640px) 100vw, 300px"
-                  className="object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                />
-              ) : (
-                <div className="text-center text-xs sm:text-sm font-medium">
-                  +Upload
-                </div>
-              )}
+              {uploadedImage
+                ? (
+                  <Image
+                    src={uploadedImage}
+                    alt="Uploaded Background"
+                    fill
+                    sizes="(max-width: 640px) 100vw, 300px"
+                    className="object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                  />
+                )
+                : (
+                  <div className="text-center text-xs sm:text-sm font-medium">
+                    +Upload
+                  </div>
+                )}
               <input
                 type="file"
                 ref={fileInputRef}

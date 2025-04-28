@@ -1,11 +1,14 @@
 import { Size } from "../types";
-import PodomoroTimer from "../components/apps/podomoro";
+// import PodomoroTimer from "../components/apps/podomoro"; // Removed unused import
 import TodoList from "../components/apps/todoList";
 import BackgroundChanger from "../components/apps/background";
 import React from "react";
 import TextEditor from "../components/apps/textEditor";
 import MusicPlayer from "../components/apps/musicPlayer";
 import AmbiencePlayer from "../components/apps/ambiencePlayer";
+import Calculator from "../components/apps/Calculator/Calculator";
+import ClockApp from "../components/apps/podomoro";
+import MiniGames from "../components/apps/miniGames"; // Import the new component
 
 // Updated interface to include missing fields
 interface AppRegistryEntry {
@@ -21,13 +24,13 @@ interface AppRegistryEntry {
 // Define default sizes and components for different applications
 // Added name, src, and optional minSize
 export const appRegistry: Record<string, AppRegistryEntry> = {
-  // Using appId as the key (e.g., 'podomoro'), and name for display
-  podomoro: {
-    name: "Pomodoro",
+  // Renamed entry: pomodoro -> clock
+  clock: {
+    name: "Clock",
     src: "/icons/clock.png",
     defaultSize: { width: 400, height: 650 },
-    minSize: { width: 250, height: 300 }, // Example minSize
-    component: PodomoroTimer,
+    minSize: { width: 300, height: 300 },
+    component: ClockApp,
   },
   music: {
     name: "Music",
@@ -66,7 +69,7 @@ export const appRegistry: Record<string, AppRegistryEntry> = {
   textEditor: {
     name: "Notepad",
     src: "/icons/notepad.png",
-    defaultSize: { width: 600, height: 400 },
+    defaultSize: { width: 700, height: 500 },
     minSize: { width: 300, height: 320 },
     component: TextEditor,
   },
@@ -83,6 +86,20 @@ export const appRegistry: Record<string, AppRegistryEntry> = {
     defaultSize: { width: 600, height: 450 },
     minSize: { width: 470, height: 340 },
     component: BackgroundChanger,
+  },
+  calculator: {
+    name: "Calculator",
+    src: "/icons/calculator.png",
+    defaultSize: { width: 350, height: 500 },
+    minSize: { width: 260, height: 400 },
+    component: Calculator,
+  },
+  miniGames: {
+    name: "Mini Games",
+    src: "/icons/settings.png",
+    defaultSize: { width: 450, height: 400 },
+    minSize: { width: 350, height: 300 },
+    component: MiniGames,
   },
   // Add other apps here using a unique key (appId)
 };

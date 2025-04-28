@@ -1,30 +1,31 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import ReactPlayer from "react-player/youtube";
 import {
+  Check,
+  Pause,
+  Pencil,
+  Play,
+  SkipBack,
+  SkipForward,
+  Trash2,
+  Video,
   Volume2,
   VolumeX,
-  SkipBack,
-  Play,
-  Pause,
-  SkipForward,
-  Video,
-  Check,
   X,
-  Pencil,
-  Trash2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import {
-  playlistAtom,
   currentSongIndexAtom,
-  playingAtom,
+  currentTimeAtom,
   getYoutubeId,
   isWindowOpenAtom,
-  currentTimeAtom,
   persistMusicPlayerState,
+  playingAtom,
+  playlistAtom,
   volumeAtom,
 } from "../../atoms/musicPlayerAtom";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,7 @@ const MusicPlayer: React.FC = () => {
     } else {
       // Find the highest seqId to set the nextSeqId correctly
       const maxId = Math.max(
-        ...playlist.map((song) => ("seqId" in song ? (song as Song).seqId : 0))
+        ...playlist.map((song) => ("seqId" in song ? (song as Song).seqId : 0)),
       );
       setNextSeqId(maxId + 1);
     }
@@ -124,8 +125,9 @@ const MusicPlayer: React.FC = () => {
   const currentSong = playlist[currentSongIndex] || null;
 
   // Get the current song's sequential ID
-  const currentSeqId =
-    currentSong && "seqId" in currentSong ? (currentSong as Song).seqId : 0;
+  const currentSeqId = currentSong && "seqId" in currentSong
+    ? (currentSong as Song).seqId
+    : 0;
 
   // Initial setup: register player cleanup on mount once
   useEffect(() => {
@@ -211,95 +213,85 @@ const MusicPlayer: React.FC = () => {
     }
   }, [volume, isMuted]);
 
-  // Sync player state when it's ready
-  useEffect(() => {
+  // Extract sync logic into a useCallback function
+  const syncPlayerState = useCallback(() => {
     if (
       !playerRef.current ||
       isPageUnloading ||
       initialSyncDone ||
       !currentSong
-    )
+    ) {
       return;
+    }
 
-    const syncTimer = setTimeout(() => {
-      try {
-        setInitialSyncDone(true);
-        setIsLoading(true);
-        ignoreEvents.current = true;
+    try {
+      setInitialSyncDone(true);
+      setIsLoading(true);
+      ignoreEvents.current = true;
 
-        // If we have a saved position, seek to it
-        if (currentTime > 0) {
-          playerRef.current?.seekTo(currentTime, "seconds");
-        }
-
-        // Apply volume settings
-        const player =
-          playerRef.current?.getInternalPlayer() as YouTubePlayerWithMethods;
-        if (player && typeof player.setVolume === "function") {
-          player.setVolume(isMuted ? 0 : volume * 100);
-        }
-
-        // Update playing state based on saved state - but with a delay
-        setTimeout(() => {
-          try {
-            const player =
-              playerRef.current?.getInternalPlayer() as YouTubePlayerWithMethods;
-            if (player) {
-              if (playing) {
-                player.playVideo();
-              } else {
-                player.pauseVideo();
-              }
-            }
-
-            setIsLoading(false);
-            ignoreEvents.current = false;
-          } catch (error) {
-            console.error("Error applying play/pause state:", error);
-            setIsLoading(false);
-            ignoreEvents.current = false;
-          }
-        }, 1000);
-      } catch (error) {
-        console.error("Error syncing player state:", error);
-        setIsLoading(false);
-        ignoreEvents.current = false;
+      // If we have a saved position, seek to it
+      if (currentTime > 0) {
+        playerRef.current?.seekTo(currentTime, "seconds");
       }
-    }, 1500);
 
-    return () => {
-      clearTimeout(syncTimer);
-    };
+      // Apply volume settings
+      const player = playerRef.current
+        ?.getInternalPlayer() as YouTubePlayerWithMethods;
+      if (player && typeof player.setVolume === "function") {
+        player.setVolume(isMuted ? 0 : volume * 100);
+      }
+
+      // Update playing state based on saved state - but with a delay
+      setTimeout(() => {
+        try {
+          const player = playerRef.current
+            ?.getInternalPlayer() as YouTubePlayerWithMethods;
+          if (player) {
+            if (playing) {
+              player.playVideo();
+            } else {
+              player.pauseVideo();
+            }
+          }
+
+          setIsLoading(false);
+          ignoreEvents.current = false;
+        } catch (error) {
+          console.error("Error applying play/pause state:", error);
+          setIsLoading(false);
+          ignoreEvents.current = false;
+        }
+      }, 1000); // Keep delay as it was
+    } catch (error) {
+      console.error("Error syncing player state:", error);
+      setIsLoading(false);
+      ignoreEvents.current = false;
+    }
   }, [
     currentSong,
     currentTime,
     playing,
     initialSyncDone,
-    persistState,
-    volume,
     isMuted,
+    volume,
   ]);
 
-  // Watch for playing state changes to sync with YouTube player
+  // Refactored sync effect to just call the function if needed
+  // (Or potentially remove this effect if onReady is sufficient)
+  // For now, let's keep it but make it simpler
   useEffect(() => {
-    if (!playerRef.current || ignoreEvents.current || !initialSyncDone) return;
-
-    try {
-      const player =
-        playerRef.current.getInternalPlayer() as YouTubePlayerWithMethods;
-      if (player) {
-        if (playing) {
-          player.playVideo();
-        } else {
-          player.pauseVideo();
-        }
-      }
-    } catch (error) {
-      console.error("Error applying play/pause state:", error);
+    if (
+      playerRef.current &&
+      currentSong &&
+      !initialSyncDone
+    ) {
+      // Maybe call syncPlayerState here too after a delay?
+      // Or rely solely on onReady? Let's rely on onReady for now.
+      // console.log("Effect triggered, initialSyncDone:", initialSyncDone);
     }
-  }, [playing, initialSyncDone]);
+  }, [currentSong, initialSyncDone, syncPlayerState]);
 
-  // Set up position tracking interval to save current time periodically
+  // Set up position tracking interval
   useEffect(() => {
     if (!playerRef.current) return;
 
@@ -307,10 +299,9 @@ const MusicPlayer: React.FC = () => {
     const saveCurrentPosition = () => {
       if (playerRef.current && !seeking && playing) {
         const newTime = playerRef.current.getCurrentTime() || 0;
-        // Only save if position has changed significantly (> 1 second)
         if (Math.abs(newTime - currentTime) > 1) {
           setCurrentTime(newTime);
-          persistState({ currentTime: newTime });
+          // persistState({ currentTime: newTime }); // Persist during interval
         }
       }
     };
@@ -320,63 +311,64 @@ const MusicPlayer: React.FC = () => {
       if (playing) {
         saveCurrentPosition();
       }
-    }, 5000); // Save position every 5 seconds
+    }, 5000);
 
     return () => {
       if (timeUpdateInterval.current) {
         clearInterval(timeUpdateInterval.current);
       }
-
-      // Save one last time on unmount
-      saveCurrentPosition();
+      // Ensure no state persistence happens in this specific cleanup
     };
-  }, [playing, currentTime, setCurrentTime, persistState, seeking]);
+    // Read currentTime here to avoid stale closures in saveCurrentPosition
+  }, [playing, currentTime, setCurrentTime, seeking]);
 
-  // Handle visibility changes (tab switching, etc.)
+  // Handle visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
-      // If the page becomes hidden (e.g., switched tabs)
       if (document.visibilityState === "hidden" && !isWindowOpen) {
-        // Save the current state
-        if (playerRef.current) {
-          const newTime = playerRef.current.getCurrentTime() || 0;
-          setCurrentTime(newTime);
-          persistState({ currentTime: newTime });
-        }
+        // Removed persistState from here as well - rely on pagehide/beforeunload
+        // if (playerRef.current) {
+        //   const newTime = playerRef.current.getCurrentTime() || 0;
+        //   setCurrentTime(newTime);
+        //   persistState({ currentTime: newTime });
+        // }
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isWindowOpen, persistState, setCurrentTime]);
+    // Read isWindowOpen here
+  }, [isWindowOpen /* removed persistState, setCurrentTime */]);
 
   // Handlers
   const handlePlayPause = () => {
     if (ignoreEvents.current) return;
 
-    // Force a short delay to make sure player is ready
-    setTimeout(() => {
-      const newPlayingState = !playing;
-      setPlaying(newPlayingState);
-      persistState({ isPlaying: newPlayingState });
+    // Set state immediately
+    const newPlayingState = !playing;
+    setPlaying(newPlayingState);
+    persistState({ isPlaying: newPlayingState });
 
+    // Control player directly after state update
+    // Add a small delay AFTER setting state to ensure player might be ready
+    setTimeout(() => {
       try {
-        const player =
-          playerRef.current?.getInternalPlayer() as YouTubePlayerWithMethods;
+        const player = playerRef.current
+          ?.getInternalPlayer() as YouTubePlayerWithMethods;
         if (player) {
           if (newPlayingState) {
+            console.log("handlePlayPause: Calling playVideo");
             player.playVideo();
           } else {
+            console.log("handlePlayPause: Calling pauseVideo");
             player.pauseVideo();
           }
         }
       } catch (error) {
-        console.error("Error toggling play state:", error);
+        console.error("Error toggling play state in handlePlayPause:", error);
       }
-    }, 50);
+    }, 50); // Keep a small delay
   };
 
   const handleNext = () => {
@@ -392,19 +384,19 @@ const MusicPlayer: React.FC = () => {
       const nextSongIndex = playlist.findIndex(
         (song) =>
           "seqId" in song &&
-          (song as Song).seqId === (nextSongs[0] as Song).seqId
+          (song as Song).seqId === (nextSongs[0] as Song).seqId,
       );
       setCurrentSongIndex(nextSongIndex);
       persistState({ currentSongIndex: nextSongIndex, currentTime: 0 });
     } else {
       // Cycle back to the lowest seqId if at the end
       const firstSong = [...playlist].sort(
-        (a, b) => (a as Song).seqId - (b as Song).seqId
+        (a, b) => (a as Song).seqId - (b as Song).seqId,
       )[0];
 
       const firstSongIndex = playlist.findIndex(
         (song) =>
-          "seqId" in song && (song as Song).seqId === (firstSong as Song).seqId
+          "seqId" in song && (song as Song).seqId === (firstSong as Song).seqId,
       );
       setCurrentSongIndex(firstSongIndex);
       persistState({ currentSongIndex: firstSongIndex, currentTime: 0 });
@@ -428,19 +420,19 @@ const MusicPlayer: React.FC = () => {
       const prevSongIndex = playlist.findIndex(
         (song) =>
           "seqId" in song &&
-          (song as Song).seqId === (prevSongs[0] as Song).seqId
+          (song as Song).seqId === (prevSongs[0] as Song).seqId,
       );
       setCurrentSongIndex(prevSongIndex);
       persistState({ currentSongIndex: prevSongIndex, currentTime: 0 });
     } else {
       // Cycle to the highest seqId if at the beginning
       const lastSong = [...playlist].sort(
-        (a, b) => (b as Song).seqId - (a as Song).seqId
+        (a, b) => (b as Song).seqId - (a as Song).seqId,
       )[0];
 
       const lastSongIndex = playlist.findIndex(
         (song) =>
-          "seqId" in song && (song as Song).seqId === (lastSong as Song).seqId
+          "seqId" in song && (song as Song).seqId === (lastSong as Song).seqId,
       );
       setCurrentSongIndex(lastSongIndex);
       persistState({ currentSongIndex: lastSongIndex, currentTime: 0 });
@@ -459,25 +451,6 @@ const MusicPlayer: React.FC = () => {
 
   const handleDuration = (duration: number) => {
     setDuration(duration);
-  };
-
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    setPlayedSeconds(newTime);
-  };
-
-  const handleSeekMouseDown = () => {
-    setSeeking(true);
-  };
-
-  const handleSeekMouseUp = (e: React.MouseEvent<HTMLInputElement>) => {
-    setSeeking(false);
-    const newTime = parseFloat((e.target as HTMLInputElement).value);
-    if (playerRef.current) {
-      playerRef.current.seekTo(newTime, "seconds");
-      setCurrentTime(newTime);
-      persistState({ currentTime: newTime });
-    }
   };
 
   const handleAddSong = (e: React.FormEvent) => {
@@ -521,10 +494,9 @@ const MusicPlayer: React.FC = () => {
 
     if (indexToRemove < 0 || indexToRemove >= playlist.length) return;
 
-    const removedSeqId =
-      "seqId" in playlist[indexToRemove]
-        ? (playlist[indexToRemove] as Song).seqId
-        : 0;
+    const removedSeqId = "seqId" in playlist[indexToRemove]
+      ? (playlist[indexToRemove] as Song).seqId
+      : 0;
 
     const newPlaylist = playlist.filter((_, index) => index !== indexToRemove);
     setPlaylist(newPlaylist);
@@ -543,13 +515,13 @@ const MusicPlayer: React.FC = () => {
       if (remainingSeqIds.length > 0) {
         // Find next higher seqId or the lowest if none higher
         const nextHigher = Math.min(
-          ...remainingSeqIds.filter((id) => id > removedSeqId)
+          ...remainingSeqIds.filter((id) => id > removedSeqId),
         );
         const lowestId = Math.min(...remainingSeqIds);
 
         const targetSeqId = nextHigher !== Infinity ? nextHigher : lowestId;
         const newIndex = newPlaylist.findIndex(
-          (song) => "seqId" in song && (song as Song).seqId === targetSeqId
+          (song) => "seqId" in song && (song as Song).seqId === targetSeqId,
         );
 
         const updatedIndex = newIndex >= 0 ? newIndex : 0;
@@ -683,325 +655,310 @@ const MusicPlayer: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-card text-card-foreground">
-      {/* Player Section */}
-      <div
-        className={`player-wrapper ${
-          showVideo ? "h-48 mb-4" : "h-0 overflow-hidden"
-        }`}
+    <div className="flex flex-col h-full bg-background text-foreground">
+      {/* Top Section: Add Song */}
+      <form
+        onSubmit={handleAddSong}
+        className="p-2 border-b border-border bg-muted flex gap-2"
       >
-        <ReactPlayer
-          ref={playerRef}
-          url={currentSong?.url}
-          playing={playing}
-          controls={showVideo}
-          onDuration={handleDuration}
-          onProgress={handleProgress}
-          onEnded={() => {
-            if (playlist.length <= 1) {
-              setPlaying(false);
-              persistState({ isPlaying: false });
-            } else {
-              handleNext();
-            }
-          }}
-          onReady={() => {
-            // Update the global player reference when ready
-            if (playerRef.current) {
-              globalYoutubePlayer =
-                playerRef.current.getInternalPlayer() as YouTubePlayerWithMethods;
-
-              // Set volume when player is ready
-              if (typeof globalYoutubePlayer.setVolume === "function") {
-                globalYoutubePlayer.setVolume(isMuted ? 0 : volume * 100);
-              }
-
-              if (isLoading) {
-                setIsLoading(false);
-              }
-            }
-          }}
-          onError={(e) => {
-            console.error("Player error:", e);
-            setIsLoading(false);
-          }}
-          width="100%"
-          height="100%"
-          style={{
-            borderRadius: "0.375rem",
-            overflow: "hidden",
-          }}
-          config={{
-            playerVars: {
-              rel: 0, // Disable related videos
-              showinfo: 0, // Hide title and uploader
-              modestbranding: 1, // Hide YouTube logo
-              iv_load_policy: 3, // Hide annotations
-              disablekb: 1, // Disable keyboard controls (prevents space bar from activating YouTube UI)
-              fs: 0, // Disable fullscreen button
-            },
-            onUnstarted: () => {
-              // Handle case where YouTube API fails to auto-play
-              if (playing && playerRef.current) {
-                try {
-                  const player =
-                    playerRef.current.getInternalPlayer() as YouTubePlayerWithMethods;
-                  if (player && typeof player.playVideo === "function") {
-                    player.playVideo();
-                  }
-                } catch (e) {
-                  console.error("Error playing video:", e);
-                }
-              }
-            },
-          }}
+        <input
+          type="text"
+          value={newSongUrl}
+          onChange={(e) => setNewSongUrl(e.target.value)}
+          placeholder="Paste YouTube URL here"
+          // Use theme classes for input
+          className="flex-grow p-2 rounded bg-input text-foreground placeholder:text-muted-foreground border border-border text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
+        <Button
+          type="submit"
+          disabled={isLoading}
+          // Use theme classes for button
+          className="bg-primary text-primary-foreground hover:bg-primary/90 text-sm px-3"
+        >
+          {isLoading ? "Adding..." : "Add"}
+        </Button>
+      </form>
+
+      {/* Current Song Display */}
+      <div className="p-3 bg-muted border-b border-border min-h-[60px]">
+        {currentSong
+          ? (
+            <div>
+              <p className="text-sm font-semibold text-foreground truncate">
+                {currentSong.title}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {formatTime(playedSeconds)} / {formatTime(duration)}
+              </p>
+            </div>
+          )
+          : (
+            <p className="text-sm text-muted-foreground">
+              Playlist empty. Add a YouTube URL.
+            </p>
+          )}
       </div>
 
-      {/* Main Content Section */}
-      <div className="flex-1 p-4 flex flex-col">
-        {/* Song Info & Controls */}
-        <div className="mb-4">
-          {/* Song Title */}
-          <h2 className="text-xl font-bold mb-2 truncate">
-            {currentSong?.title || "No song selected"}
-            {currentSong && "seqId" in currentSong && (
-              <span className="text-sm font-normal ml-2 text-muted-foreground">
-                #{(currentSong as Song).seqId}
-              </span>
-            )}
-            {isLoading && (
-              <span className="text-sm font-normal ml-2 text-amber-500">
-                (loading...)
-              </span>
-            )}
-            {!isWindowOpen && playing && (
-              <span className="text-sm font-normal ml-2 text-primary">
-                (playing in background)
-              </span>
-            )}
-          </h2>
-
-          {/* Progress Bar with Slider */}
-          <div className="mb-2 w-full">
-            <div className="flex flex-col space-y-1 w-full">
-              {/* Slider */}
-              <input
-                type="range"
-                min={0}
-                max={duration || 100}
-                step={0.1}
-                value={playedSeconds}
-                onChange={handleSeekChange}
-                onMouseDown={handleSeekMouseDown}
-                onMouseUp={handleSeekMouseUp}
-                disabled={playlist.length === 0 || duration === 0}
-                className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
-                style={{
-                  background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${
-                    (playedSeconds / (duration || 100)) * 100
-                  }%, var(--muted) ${
-                    (playedSeconds / (duration || 100)) * 100
-                  }%, var(--muted) 100%)`,
+      {/* Video Player & Controls Wrapper */}
+      <div className="flex flex-col flex-grow relative">
+        {/* Video Player (conditionally rendered) */}
+        {showVideo && (
+          <div className="aspect-video bg-black">
+            {currentSong && (
+              <ReactPlayer
+                ref={playerRef}
+                url={currentSong.url}
+                playing={playing}
+                volume={isMuted ? 0 : volume}
+                onPlay={() => !ignoreEvents.current && setPlaying(true)}
+                onPause={() => !ignoreEvents.current && setPlaying(false)}
+                onEnded={handleNext}
+                onProgress={handleProgress}
+                onDuration={handleDuration}
+                width="100%"
+                height="100%"
+                onError={(e) => console.error("ReactPlayer Error:", e)}
+                onReady={() => {
+                  // Call the defined sync function
+                  if (!initialSyncDone) {
+                    syncPlayerState();
+                  }
                 }}
               />
-
-              {/* Time Display */}
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatTime(playedSeconds)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Controls */}
-          <div className="flex justify-center items-center space-x-4 mb-4">
-            <button
-              onClick={handlePrevious}
-              className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
-              aria-label="Previous"
-              disabled={playlist.length <= 1}
-            >
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handlePlayPause}
-              className="p-3 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
-              aria-label={playing ? "Pause" : "Play"}
-              disabled={playlist.length === 0}
-            >
-              {playing ? (
-                <Pause className="w-6 h-6" />
-              ) : (
-                <Play className="w-6 h-6" />
-              )}
-            </button>
-            <button
-              onClick={handleNext}
-              className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground"
-              aria-label="Next"
-              disabled={playlist.length <= 1}
-            >
-              <SkipForward className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Volume Control */}
-          <div className="flex items-center space-x-2 mb-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleMute}
-              className="h-8 w-8 rounded-full p-0"
-            >
-              {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </Button>
-
-            <Slider
-              value={[isMuted ? 0 : volume]}
-              min={0}
-              max={1}
-              step={0.01}
-              onValueChange={handleVolumeChange}
-              className="flex-1"
-            />
-
-            <span className="text-xs text-muted-foreground w-8 text-right">
-              {Math.round((isMuted ? 0 : volume) * 100)}%
-            </span>
-          </div>
-
-          {/* Video Toggle */}
-          <div className="flex justify-center mb-4">
-            <button
-              onClick={toggleVideoDisplay}
-              className="px-3 py-1 text-sm rounded-md border border-border bg-muted hover:bg-muted/80 text-foreground flex items-center gap-2"
-              disabled={playlist.length === 0}
-            >
-              <Video className="w-4 h-4" />
-              {showVideo ? "Hide Video" : "Show Video"}
-            </button>
-          </div>
-        </div>
-
-        {/* Add Song Form */}
-        <form onSubmit={handleAddSong} className="mb-4">
-          <div className="flex">
-            <input
-              type="url"
-              value={newSongUrl}
-              onChange={(e) => setNewSongUrl(e.target.value)}
-              placeholder="Enter YouTube URL"
-              className="flex-grow p-2 rounded-l-md bg-input border border-border focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
-              required
-            />
-            <button
-              type="submit"
-              className="px-3 py-2 rounded-r-md bg-accent hover:bg-accent/90 text-accent-foreground"
-            >
-              Add
-            </button>
-          </div>
-        </form>
-
-        {/* Playlist */}
-        <div className="flex-1 overflow-hidden">
-          <h3 className="text-sm font-medium mb-2 text-foreground">Playlist</h3>
-          <div className="overflow-y-auto max-h-[calc(100%-30px)] bg-muted/50 rounded-md">
-            {playlist.length > 0 ? (
-              <ul>
-                {playlist.map((song, index) => (
-                  <li
-                    key={index}
-                    onClick={() => handleSelectSong(index)}
-                    className={`px-3 py-2 cursor-pointer rounded-md hover:bg-muted/80 ${
-                      index === currentSongIndex
-                        ? "bg-primary/10 font-medium"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {index === currentSongIndex && playing ? (
-                          <span className="text-primary flex-shrink-0">
-                            <Play className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <span className="w-4 h-4 flex-shrink-0"></span>
-                        )}
-
-                        {editingIndex === index ? (
-                          <div className="flex items-center gap-1 flex-1">
-                            <input
-                              type="text"
-                              value={editingTitle}
-                              onChange={(e) => setEditingTitle(e.target.value)}
-                              onKeyDown={handleTitleKeyDown}
-                              className="p-1 bg-input border border-border rounded text-sm w-full"
-                              autoFocus
-                            />
-                            <button
-                              onClick={saveEditedTitle}
-                              className="text-primary p-1"
-                              title="Save"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="text-muted-foreground p-1"
-                              title="Cancel"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span
-                              className={`truncate ${
-                                index === currentSongIndex ? "text-primary" : ""
-                              }`}
-                            >
-                              {song.title}
-                            </span>
-                            {"seqId" in song && (
-                              <span className="text-xs text-muted-foreground">
-                                #{(song as Song).seqId}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {editingIndex !== index && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => startEditingTitle(e, index)}
-                            className="text-muted-foreground hover:text-primary p-1 rounded-full hover:bg-muted flex-shrink-0"
-                            aria-label={`Edit ${song.title}`}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => handleRemoveSong(e, index)}
-                            className="text-muted-foreground hover:text-destructive p-1 rounded-full hover:bg-muted flex-shrink-0"
-                            aria-label={`Remove ${song.title}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="p-3 text-muted-foreground text-sm italic">
-                Your playlist is empty. Add some songs to get started.
-              </p>
             )}
           </div>
+        )}
+
+        {/* Invisible player for background playback */}
+        {!showVideo && currentSong && (
+          <div style={{ display: "none" }}>
+            <ReactPlayer
+              ref={playerRef}
+              url={currentSong.url}
+              playing={playing}
+              volume={isMuted ? 0 : volume}
+              onPlay={() => !ignoreEvents.current && setPlaying(true)}
+              onPause={() => !ignoreEvents.current && setPlaying(false)}
+              onEnded={handleNext}
+              onProgress={handleProgress}
+              onDuration={handleDuration}
+              onError={(e) => console.error("ReactPlayer Error:", e)}
+              onReady={() => {
+                // Call the defined sync function
+                if (!initialSyncDone) {
+                  syncPlayerState();
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Controls Area */}
+        <div className="p-3 bg-muted border-t border-border mt-auto">
+          {/* Progress Bar - Now uses onValueChange and onValueCommit directly */}
+          <Slider
+            value={[playedSeconds]}
+            max={duration}
+            step={1}
+            onValueChange={(value) => {
+              setSeeking(true);
+              setPlayedSeconds(value[0]);
+            }}
+            onValueCommit={(value) => {
+              setSeeking(false);
+              const newTime = value[0];
+              if (playerRef.current) {
+                playerRef.current.seekTo(newTime, "seconds");
+                setCurrentTime(newTime);
+                persistState({ currentTime: newTime });
+              }
+            }}
+            className="w-full h-2 mb-2"
+            disabled={!currentSong}
+          />
+
+          <div className="flex items-center justify-between">
+            {/* Volume Control */}
+            <div className="flex items-center w-1/4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleMute}
+                className="text-foreground hover:bg-muted/50 mr-1 h-8 w-8 p-1"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted || volume === 0
+                  ? <VolumeX size={18} />
+                  : <Volume2 size={18} />}
+              </Button>
+              <Slider
+                value={[isMuted ? 0 : volume]}
+                max={1}
+                step={0.01}
+                onValueChange={handleVolumeChange}
+                className="w-full h-2"
+              />
+            </div>
+
+            {/* Main Controls */}
+            <div className="flex items-center justify-center space-x-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePrevious}
+                disabled={!currentSong || playlist.length < 2}
+                className="text-foreground hover:bg-muted/50 h-8 w-8 p-1"
+                title="Previous"
+              >
+                <SkipBack size={20} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePlayPause}
+                disabled={!currentSong}
+                className="text-foreground hover:bg-muted/50 h-10 w-10 p-1 rounded-full"
+                title={playing ? "Pause" : "Play"}
+              >
+                {playing ? <Pause size={24} /> : <Play size={24} />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNext}
+                disabled={!currentSong || playlist.length < 2}
+                className="text-foreground hover:bg-muted/50 h-8 w-8 p-1"
+                title="Next"
+              >
+                <SkipForward size={20} />
+              </Button>
+            </div>
+
+            {/* Show/Hide Video Button */}
+            <div className="flex justify-end w-1/4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleVideoDisplay}
+                className="text-foreground hover:bg-muted/50 h-8 w-8 p-1"
+                title={showVideo ? "Hide Video" : "Show Video"}
+              >
+                <Video size={18} />
+              </Button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Playlist Area */}
+      <div className="flex-grow overflow-y-auto bg-background border-t border-border">
+        {playlist.length === 0
+          ? (
+            <p className="p-4 text-center text-muted-foreground text-sm">
+              Playlist is empty
+            </p>
+          )
+          : (
+            <ul>
+              {playlist.map((song, index) => (
+                <li
+                  key={song.id + index} // Combine ID and index for potential duplicates
+                  className={cn(
+                    "p-2 flex items-center justify-between cursor-pointer border-b border-border",
+                    "hover:bg-muted",
+                    index === currentSongIndex &&
+                      "bg-primary text-primary-foreground", // Use primary for selection
+                    editingIndex === index && "bg-muted", // Different background for editing row
+                  )}
+                  onClick={() =>
+                    editingIndex !== index && handleSelectSong(index)}
+                >
+                  {editingIndex === index
+                    ? (
+                      <div className="flex-grow flex items-center">
+                        <input
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={handleTitleKeyDown}
+                          // Use theme classes
+                          className="flex-grow bg-input text-foreground border border-border rounded px-2 py-1 text-sm mr-2"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={saveEditedTitle}
+                          className="text-primary hover:bg-muted/50 h-6 w-6 p-1 mr-1"
+                          title="Save Title"
+                        >
+                          <Check size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={cancelEditing}
+                          className="text-destructive hover:bg-muted/50 h-6 w-6 p-1"
+                          title="Cancel Edit"
+                        >
+                          <X size={16} />
+                        </Button>
+                      </div>
+                    )
+                    : (
+                      <div className="flex-grow flex items-center overflow-hidden mr-2">
+                        <span className="text-xs w-5 text-center mr-2 text-muted-foreground">
+                          {(song as Song).seqId || index + 1}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-sm truncate",
+                            // If not selected, use standard text color
+                            index !== currentSongIndex && "text-foreground",
+                            // If selected, text color is already primary-foreground from parent
+                          )}
+                        >
+                          {song.title}
+                        </span>
+                      </div>
+                    )}
+                  {editingIndex !== index && (
+                    <div className="flex items-center flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => startEditingTitle(e, index)}
+                        // Use theme text color, adjust if needed when selected
+                        className={cn(
+                          "hover:bg-muted/50 h-6 w-6 p-1 mr-1",
+                          index === currentSongIndex
+                            ? "text-primary-foreground/80 hover:text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                        title="Edit Title"
+                      >
+                        <Pencil size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleRemoveSong(e, index)}
+                        // Use destructive text color
+                        className={cn(
+                          "text-destructive/80 hover:text-destructive hover:bg-destructive/10 h-6 w-6 p-1",
+                          index === currentSongIndex &&
+                            "text-destructive-foreground/80 hover:text-destructive-foreground",
+                        )}
+                        title="Remove Song"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
       </div>
     </div>
   );

@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Window from "./layout/window";
 import { appRegistry } from "../config/appRegistry";
 import { playSound } from "../lib/utils"; // Import the sound utility
 import { useAtom } from "jotai";
 import {
-  openWindowsAtom, // Read atom for currently open windows
-  openWindowAtom, // Write atom to open/focus a window
   closeWindowAtom, // Write atom to close a window
+  openWindowAtom, // Write atom to open/focus a window
+  openWindowsAtom, // Read atom for currently VISIBLE windows
   // focusWindowAtom, // Write atom to bring window to front (used by Window component later)
   // WindowState, // Import type if needed
 } from "../atoms/windowAtoms"; // Adjust path as necessary
 // import { v4 as uuidv4 } from "uuid"; // Import uuid for generating unique window IDs
+import Taskbar from "./layout/taskbar"; // Import the Taskbar
 
 // Define the props for the reusable AppIcon component
 interface AppIconProps {
@@ -33,9 +34,8 @@ const AppIcon: React.FC<AppIconProps> = ({
   appId,
   onDoubleClick,
 }) => {
-  // Selection/Open style might be derived differently now or simplified
-  // For now, let's remove the dynamic background based on isSelected/isOpen
-  const bgStyle = "bg-white text-primary";
+  // Removed hardcoded bgStyle
+  // const bgStyle = "bg-white text-primary";
 
   return (
     <div
@@ -50,8 +50,9 @@ const AppIcon: React.FC<AppIconProps> = ({
         height={60}
         className={`drop-shadow-lg`} // Remove brightness change for now
       />
+      {/* Apply theme-aware classes directly */}
       <p
-        className={`px-1 font-tight shadow-lg mt-1 rounded text-sm ${bgStyle}`}
+        className={`px-1.5 py-0.5 font-tight shadow-md mt-1 rounded text-sm bg-background/80 backdrop-blur-sm text-foreground`}
       >
         {name}
       </p>
@@ -59,10 +60,10 @@ const AppIcon: React.FC<AppIconProps> = ({
   );
 };
 
-// Main component to display all app icons
+// Main component to display all app icons and windows
 export const AppsIcons = () => {
-  // Get the list of open windows from the Jotai atom
-  const openWindows = useAtom(openWindowsAtom)[0]; // Read-only access to the derived atom
+  // Get the list of VISIBLE open windows from the Jotai atom
+  const [openWindows] = useAtom(openWindowsAtom); // Read-only access
 
   // Get the setter functions for window actions
   const openWindow = useAtom(openWindowAtom)[1];
@@ -79,10 +80,10 @@ export const AppsIcons = () => {
   useEffect(() => {
     const checkDevice = () => {
       const userAgent = navigator.userAgent.toLowerCase();
-      const isMobile =
-        /iphone|ipad|ipod|android|blackberry|windows phone/g.test(userAgent);
-      const isTablet =
-        /(ipad|tablet|playbook|silk)|(android(?!.*mobile))/g.test(userAgent);
+      const isMobile = /iphone|ipad|ipod|android|blackberry|windows phone/g
+        .test(userAgent);
+      const isTablet = /(ipad|tablet|playbook|silk)|(android(?!.*mobile))/g
+        .test(userAgent);
       setIsMobileOrTablet(isMobile || isTablet);
     };
 
@@ -152,10 +153,11 @@ export const AppsIcons = () => {
       <div
         className="inset-0 -z-10"
         onClick={() => setSelectedAppId(null)}
-      ></div>
+      >
+      </div>
 
       {/* Desktop Icons */}
-      <div className="absolute top-4 right-4 flex flex-col flex-wrap-reverse gap-2z-10 max-h-[calc(100vh-80px)]">
+      <div className="absolute top-4 left-4 flex flex-col flex-wrap-reverse gap-2 z-10 max-h-[calc(100vh-80px)]">
         {apps.map((app) => (
           <div
             key={app.id}
@@ -174,12 +176,12 @@ export const AppsIcons = () => {
         ))}
       </div>
 
-      {/* Render Windows based on the openWindows atom */}
+      {/* Render VISIBLE Windows based on the openWindows atom */}
       {openWindows.map((windowState) => {
         const appConfig = appRegistry[windowState.appId];
         if (!appConfig) {
           console.error(
-            `App configuration not found for: ${windowState.appId}. Closing window ID: ${windowState.id}`
+            `App configuration not found for: ${windowState.appId}. Closing window ID: ${windowState.id}`,
           );
           // Close the inconsistent window state
           closeWindow(windowState.id);
@@ -208,6 +210,9 @@ export const AppsIcons = () => {
           </Window>
         );
       })}
+
+      {/* Render the Taskbar */}
+      <Taskbar />
     </>
   );
 };

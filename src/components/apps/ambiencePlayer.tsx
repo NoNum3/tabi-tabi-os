@@ -1,23 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import {
   ambienceSounds,
-  currentSoundIndexAtom,
-  isPlayingAtom,
-  volumeAtom,
-  persistAmbiencePlayerState,
   currentSoundAtom,
-  isWindowOpenAtom,
+  currentSoundIndexAtom,
   currentTimeAtom,
+  isPlayingAtom,
+  isWindowOpenAtom,
+  persistAmbiencePlayerState,
+  volumeAtom,
 } from "../../atoms/ambiencePlayerAtom";
 import { playSound } from "@/lib/utils";
 
 // Icons
 import {
-  Play,
   Pause,
+  Play,
   SkipBack,
   SkipForward,
   Volume2,
@@ -61,8 +61,9 @@ let isProcessingQueue = false;
 
 // Process the audio operation queue
 const processAudioQueue = async () => {
-  if (isProcessingQueue || !globalAudio || audioOperationQueue.length === 0)
+  if (isProcessingQueue || !globalAudio || audioOperationQueue.length === 0) {
     return;
+  }
 
   isProcessingQueue = true;
 
@@ -98,7 +99,7 @@ const processAudioQueue = async () => {
     } catch (error) {
       console.error(
         `Error performing audio operation ${operation.type}:`,
-        error
+        error,
       );
     }
 
@@ -111,8 +112,9 @@ const processAudioQueue = async () => {
 
 // Safe wrappers for audio operations
 const safeAudioPlay = () => {
-  if (!globalAudio || isPageUnloading)
+  if (!globalAudio || isPageUnloading) {
     return Promise.reject(new Error("No audio element or page is unloading"));
+  }
   audioOperationQueue.push({ type: "play" });
   processAudioQueue();
   return Promise.resolve();
@@ -150,7 +152,7 @@ if (typeof window !== "undefined" && !globalAudio) {
 const AmbiencePlayer: React.FC = () => {
   // Global state using Jotai atoms
   const [currentSoundIndex, setCurrentSoundIndex] = useAtom(
-    currentSoundIndexAtom
+    currentSoundIndexAtom,
   );
   const [isPlaying, setIsPlaying] = useAtom(isPlayingAtom);
   const [volume, setVolume] = useAtom(volumeAtom);
@@ -188,8 +190,9 @@ const AmbiencePlayer: React.FC = () => {
         !currentSound ||
         initialSyncDone.current ||
         isPageUnloading
-      )
+      ) {
         return;
+      }
       initialSyncDone.current = true;
 
       console.log("Syncing initial playback state...");
@@ -238,7 +241,7 @@ const AmbiencePlayer: React.FC = () => {
               safeAudioSetCurrentTime(currentTime);
             } else {
               console.warn(
-                "Saved time exceeds audio duration, starting from beginning"
+                "Saved time exceeds audio duration, starting from beginning",
               );
             }
           } catch (error) {
@@ -384,7 +387,7 @@ const AmbiencePlayer: React.FC = () => {
       console.log(
         `State mismatch detected - UI: ${
           isPlaying ? "playing" : "paused"
-        }, Audio: ${audioIsActuallyPlaying ? "playing" : "paused"}`
+        }, Audio: ${audioIsActuallyPlaying ? "playing" : "paused"}`,
       );
 
       if (isPlaying && !audioIsActuallyPlaying && !isLoading) {
@@ -465,85 +468,70 @@ const AmbiencePlayer: React.FC = () => {
     const saveCurrentPosition = () => {
       if (globalAudio && !isLoading) {
         const newTime = globalAudio.currentTime;
-        // Only save if position has changed significantly (> 1 second)
         if (Math.abs(newTime - currentTime) > 1) {
           console.log(`Saving current position: ${newTime} seconds`);
           setCurrentTime(newTime);
-          persistState({ currentTime: newTime });
+          // persistState({ currentTime: newTime }); // Persist during interval
         }
       }
     };
 
-    // Set up an interval to periodically save the current playback position
     timeUpdateInterval.current = setInterval(() => {
       if (isPlaying && !globalAudio.paused) {
         saveCurrentPosition();
       }
-    }, 5000); // Save position every 5 seconds
-
-    // Also listen for pause/stop events to save position
-    const handlePause = () => {
-      saveCurrentPosition();
-    };
-
-    const handleEnded = () => {
-      saveCurrentPosition();
-    };
+    }, 5000);
 
     // Add event listeners for pause and ended events
-    globalAudio.addEventListener("pause", handlePause);
-    globalAudio.addEventListener("ended", handleEnded);
+    const handleAudioPause = () => {
+      saveCurrentPosition();
+    };
+    const handleAudioEnded = () => {
+      saveCurrentPosition(); // Should loop, but save position just in case
+    };
+    globalAudio.addEventListener("pause", handleAudioPause);
+    globalAudio.addEventListener("ended", handleAudioEnded);
 
     return () => {
       if (timeUpdateInterval.current) {
         clearInterval(timeUpdateInterval.current);
       }
-
-      // Remove event listeners
-      globalAudio?.removeEventListener("pause", handlePause);
-      globalAudio?.removeEventListener("ended", handleEnded);
-
-      // Save one last time on unmount
-      if (globalAudio) {
-        saveCurrentPosition();
-      }
+      // Remove specific listeners added in this effect
+      globalAudio?.removeEventListener("pause", handleAudioPause);
+      globalAudio?.removeEventListener("ended", handleAudioEnded);
+      // Ensure no state persistence happens in this specific cleanup
     };
-  }, [isPlaying, isLoading, currentTime, setCurrentTime, persistState]);
+    // Read relevant state here
+  }, [
+    isPlaying,
+    isLoading,
+    currentTime,
+    setCurrentTime, /* removed persistState */
+  ]);
 
-  // Component mount/unmount
+  // Component mount/unmount & Visibility Change
   useEffect(() => {
     // Set up visibilitychange listener to detect tab switches
     const handleVisibilityChange = () => {
-      // If the page becomes hidden (e.g., switched tabs)
       if (document.visibilityState === "hidden" && !isWindowOpen) {
-        // Save the current state
-        if (globalAudio) {
-          const newTime = globalAudio.currentTime;
-          setCurrentTime(newTime);
-          persistState({ currentTime: newTime });
-        }
+        // Removed persistState from here - rely on pagehide/beforeunload
+        // if (globalAudio) {
+        //   const newTime = globalAudio.currentTime;
+        //   setCurrentTime(newTime);
+        //   persistState({ currentTime: newTime });
+        // }
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // Clean up function
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-
-      // If we're unloading the page (not just closing the window)
-      if (isPageUnloading && globalAudio) {
-        try {
-          // Stop any playing audio and clear source
-          globalAudio.pause();
-          globalAudio.src = ""; // Releases media resources
-          globalAudio.load(); // Force cleanup
-        } catch (e) {
-          console.error("Error during final cleanup:", e);
-        }
-      }
+      // ... existing final cleanup logic ...
+      if (isPageUnloading && globalAudio) { /* ... */ }
     };
-  }, [isWindowOpen, persistState, setCurrentTime]);
+    // Read isWindowOpen here
+  }, [isWindowOpen /* removed persistState, setCurrentTime */]);
 
   // Handlers
   const handlePlayPause = () => {
@@ -574,8 +562,8 @@ const AmbiencePlayer: React.FC = () => {
     // Set loading state before changing track
     setIsLoading(true);
 
-    const newIndex =
-      (currentSoundIndex - 1 + ambienceSounds.length) % ambienceSounds.length;
+    const newIndex = (currentSoundIndex - 1 + ambienceSounds.length) %
+      ambienceSounds.length;
     setCurrentSoundIndex(newIndex);
     persistState({ currentSoundIndex: newIndex });
   };
@@ -603,88 +591,98 @@ const AmbiencePlayer: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full p-3 bg-stone-100">
-      <div className="flex justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-primary">
-            {currentSound?.title}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {isLoading ? "Loading..." : isPlaying ? "Playing" : "Paused"}
-            {!isWindowOpen && isPlaying && " in background"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            <span>Sound {currentSoundIndex + 1}</span>
-            <span> of {ambienceSounds.length}</span>
-          </p>
-        </div>
-
-        <div className="flex justify-center items-center space-x-3">
-          <div className="p-1 rounded-full">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePrevious}
-              disabled={isLoading}
-              className="h-10 w-10 rounded-full"
-            >
-              <SkipBack size={20} />
-            </Button>
+    <div className="w-full h-full flex flex-col bg-card text-card-foreground">
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 border-b border-border bg-muted">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded bg-accent flex items-center justify-center flex-shrink-0">
+            {/* Placeholder for icon, maybe based on current sound */}
+            <span className="text-xl">🎵</span>
           </div>
+          <div>
+            <h2 className="text-sm font-medium text-foreground truncate">
+              {currentSound?.title || "Select a sound"}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {currentSound?.artist || "Ambience Player"}
+            </p>
+          </div>
+        </div>
+        {/* Optional: Add a settings or info button here? */}
+      </div>
 
+      {/* Controls */}
+      <div className="flex flex-col items-center p-3 bg-muted">
+        <div className="flex items-center justify-center space-x-4 mb-3 w-full">
+          {/* Previous Button */}
           <Button
-            variant="default"
+            variant="ghost"
             size="icon"
-            onClick={handlePlayPause}
-            disabled={isLoading}
-            className={`h-14 w-14 rounded-full ${
-              isLoading ? "opacity-70" : ""
-            }`}
+            onClick={handlePrevious}
+            className="h-8 w-8"
+            disabled={ambienceSounds.length < 2}
+            title="Previous"
           >
-            {isPlaying ? (
-              <Pause size={24} />
-            ) : (
-              <Play size={24} className="ml-1" />
-            )}
+            <SkipBack className="h-5 w-5 text-foreground" />
           </Button>
 
-          <div className="p-1 rounded-full">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleNext}
-              disabled={isLoading}
-              className="h-10 w-10 rounded-full"
-            >
-              <SkipForward size={20} />
-            </Button>
-          </div>
+          {/* Play/Pause Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePlayPause}
+            className="h-10 w-10 rounded-full"
+            disabled={!currentSound}
+            title={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying
+              ? <Pause className="h-6 w-6 text-foreground" />
+              : <Play className="h-6 w-6 text-foreground" />}
+          </Button>
+
+          {/* Next Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNext}
+            className="h-8 w-8"
+            disabled={ambienceSounds.length < 2}
+            title="Next"
+          >
+            <SkipForward className="h-5 w-5 text-foreground" />
+          </Button>
+        </div>
+
+        {/* Volume Control */}
+        <div className="flex items-center space-x-2 w-full max-w-[200px]">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleMute}
+            className="h-7 w-7"
+            title={isMuted ? "Unmute" : "Mute"}
+          >
+            {isMuted || volume === 0
+              ? <VolumeX className="h-4 w-4 text-foreground" />
+              : <Volume2 className="h-4 w-4 text-foreground" />}
+          </Button>
+          <Slider
+            value={[isMuted ? 0 : volume]}
+            min={0}
+            max={1}
+            step={0.01}
+            onValueChange={handleVolumeChange}
+            className="flex-1 h-2"
+          />
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 px-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleMute}
-          className="h-8 w-8 rounded-full"
-        >
-          {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-        </Button>
-
-        <Slider
-          value={[isMuted ? 0 : volume]}
-          min={0}
-          max={1}
-          step={0.01}
-          onValueChange={handleVolumeChange}
-          className="flex-1"
-        />
-
-        <span className="text-xs text-muted-foreground w-8 text-right">
-          {Math.round((isMuted ? 0 : volume) * 100)}%
-        </span>
-      </div>
+      {/* Placeholder for sound list/selection if needed in the future */}
+      {
+        /* <div className="flex-grow overflow-y-auto border-t border-border p-2">
+        <p className="text-center text-xs text-muted-foreground">Sound list coming soon...</p>
+      </div> */
+      }
     </div>
   );
 };

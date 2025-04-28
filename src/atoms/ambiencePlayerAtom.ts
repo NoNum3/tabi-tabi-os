@@ -8,6 +8,15 @@ export interface AmbienceSound {
   source: string;
 }
 
+// Define the shape of the persisted state
+interface AmbiencePlayerState {
+  currentSoundIndex: number;
+  isPlaying: boolean;
+  volume: number;
+  isWindowOpen: boolean;
+  currentTime: number;
+}
+
 // Create a list of ambience sounds
 export const ambienceSounds: AmbienceSound[] = [
   {
@@ -62,98 +71,115 @@ export const ambienceSounds: AmbienceSound[] = [
   },
 ];
 
-// Get stored state or use defaults
-const getInitialState = () => {
-  const stored = loadFeatureState<{
-    currentSoundIndex: number;
-    isPlaying: boolean;
-    volume: number;
-    isWindowOpen: boolean;
-    currentTime: number;
-  }>("ambiencePlayer");
+const FEATURE_KEY = "ambiencePlayer";
 
-  return {
-    currentSoundIndex: stored?.currentSoundIndex ?? 0,
-    isPlaying: stored?.isPlaying ?? false,
-    volume: stored?.volume ?? 0.7,
-    isWindowOpen: stored?.isWindowOpen ?? false,
-    currentTime: stored?.currentTime ?? 0,
-  };
+// Default state object
+const defaultAmbiencePlayerState: AmbiencePlayerState = {
+  currentSoundIndex: 0,
+  isPlaying: false,
+  volume: 0.7,
+  isWindowOpen: false,
+  currentTime: 0,
 };
 
-// Create atoms
-export const currentSoundIndexAtom = atom<number>(
-  getInitialState().currentSoundIndex
-);
-export const isPlayingAtom = atom<boolean>(getInitialState().isPlaying);
-export const volumeAtom = atom<number>(getInitialState().volume);
-export const isWindowOpenAtom = atom<boolean>(getInitialState().isWindowOpen);
-export const currentTimeAtom = atom<number>(getInitialState().currentTime);
+// Get stored state or use defaults - SAFE INITIALIZATION
+const getInitialState = (): AmbiencePlayerState => {
+  // Only access localStorage on the client
+  if (typeof window === "undefined") {
+    return defaultAmbiencePlayerState;
+  }
+  return loadFeatureState<AmbiencePlayerState>(FEATURE_KEY) ??
+    defaultAmbiencePlayerState;
+};
 
-// Derived atom to get the current sound
+// --- Base Atom ---
+// The single source of truth for persisted state, initialized safely
+const baseAmbiencePlayerAtom = atom<AmbiencePlayerState>(getInitialState());
+
+// --- Persisted State Atom (Handles Reading/Writing to Base and Storage) ---
+export const ambiencePlayerStateAtom = atom(
+  (get) => get(baseAmbiencePlayerAtom),
+  (
+    get,
+    set,
+    update:
+      | AmbiencePlayerState
+      | ((prev: AmbiencePlayerState) => AmbiencePlayerState),
+  ) => {
+    const newState = typeof update === "function"
+      ? update(get(baseAmbiencePlayerAtom))
+      : update;
+    set(baseAmbiencePlayerAtom, newState);
+    // Only save on client
+    if (typeof window !== "undefined") {
+      saveFeatureState(FEATURE_KEY, newState);
+    }
+  },
+);
+
+// --- Derived Atoms for Component Access ---
+
+// Current Sound Index
+export const currentSoundIndexAtom = atom(
+  (get) => get(ambiencePlayerStateAtom).currentSoundIndex,
+  (get, set, newIndex: number) => {
+    const safeIndex = ambienceSounds.length > 0
+      ? ((newIndex % ambienceSounds.length) + ambienceSounds.length) %
+        ambienceSounds.length
+      : 0;
+    set(
+      ambiencePlayerStateAtom,
+      (prev) => ({ ...prev, currentSoundIndex: safeIndex }),
+    );
+  },
+);
+
+// Playing State
+export const isPlayingAtom = atom(
+  (get) => get(ambiencePlayerStateAtom).isPlaying,
+  (get, set, isPlaying: boolean) => {
+    set(ambiencePlayerStateAtom, (prev) => ({ ...prev, isPlaying }));
+  },
+);
+
+// Volume
+export const volumeAtom = atom(
+  (get) => get(ambiencePlayerStateAtom).volume,
+  (get, set, newVolume: number) => {
+    const clampedVolume = Math.max(0, Math.min(1, newVolume)); // Ensure volume is 0-1
+    set(
+      ambiencePlayerStateAtom,
+      (prev) => ({ ...prev, volume: clampedVolume }),
+    );
+  },
+);
+
+// Window Open State
+export const isWindowOpenAtom = atom(
+  (get) => get(ambiencePlayerStateAtom).isWindowOpen,
+  (get, set, isOpen: boolean) => {
+    set(ambiencePlayerStateAtom, (prev) => ({ ...prev, isWindowOpen: isOpen }));
+  },
+);
+
+// Current Time
+export const currentTimeAtom = atom(
+  (get) => get(ambiencePlayerStateAtom).currentTime,
+  (get, set, newTime: number) => {
+    set(ambiencePlayerStateAtom, (prev) => ({ ...prev, currentTime: newTime }));
+  },
+);
+
+// --- Derived atoms (Unchanged) ---
 export const currentSoundAtom = atom((get) => {
-  const currentIndex = get(currentSoundIndexAtom);
+  const currentIndex = get(currentSoundIndexAtom); // Use derived atom
   return ambienceSounds[currentIndex];
 });
 
-// Persist state when it changes
+// --- Persistence Atom (Simplified) ---
 export const persistAmbiencePlayerState = atom(
-  (get) => ({
-    currentSoundIndex: get(currentSoundIndexAtom),
-    isPlaying: get(isPlayingAtom),
-    volume: get(volumeAtom),
-    isWindowOpen: get(isWindowOpenAtom),
-    currentTime: get(currentTimeAtom),
-  }),
-  (
-    _get,
-    set,
-    newState: {
-      currentSoundIndex?: number;
-      isPlaying?: boolean;
-      volume?: number;
-      isWindowOpen?: boolean;
-      currentTime?: number;
-    }
-  ) => {
-    if (newState.currentSoundIndex !== undefined) {
-      set(currentSoundIndexAtom, newState.currentSoundIndex);
-    }
-    if (newState.isPlaying !== undefined) {
-      set(isPlayingAtom, newState.isPlaying);
-    }
-    if (newState.volume !== undefined) {
-      set(volumeAtom, newState.volume);
-    }
-    if (newState.isWindowOpen !== undefined) {
-      set(isWindowOpenAtom, newState.isWindowOpen);
-    }
-    if (newState.currentTime !== undefined) {
-      set(currentTimeAtom, newState.currentTime);
-    }
-
-    // Save to local storage
-    const currentState = {
-      currentSoundIndex:
-        newState.currentSoundIndex !== undefined
-          ? newState.currentSoundIndex
-          : _get(currentSoundIndexAtom),
-      isPlaying:
-        newState.isPlaying !== undefined
-          ? newState.isPlaying
-          : _get(isPlayingAtom),
-      volume:
-        newState.volume !== undefined ? newState.volume : _get(volumeAtom),
-      isWindowOpen:
-        newState.isWindowOpen !== undefined
-          ? newState.isWindowOpen
-          : _get(isWindowOpenAtom),
-      currentTime:
-        newState.currentTime !== undefined
-          ? newState.currentTime
-          : _get(currentTimeAtom),
-    };
-
-    saveFeatureState("ambiencePlayer", currentState);
-  }
+  null, // Read function is null
+  (get, set, update: Partial<AmbiencePlayerState>) => {
+    set(ambiencePlayerStateAtom, (prev) => ({ ...prev, ...update }));
+  },
 );

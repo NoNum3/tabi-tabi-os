@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Itim } from "next/font/google";
 import "@/styles/globals.css";
 import JotaiProvider from "@/components/providers/JotaiProvider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 const font = Itim({ weight: "400", subsets: ["latin"] });
@@ -25,10 +26,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={font.className}>
-        <JotaiProvider>{children}</JotaiProvider>
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || ""} />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <JotaiProvider>{children}</JotaiProvider>
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || ""} />
+        </ThemeProvider>
       </body>
     </html>
   );

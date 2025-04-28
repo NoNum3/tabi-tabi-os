@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { useAtom } from "jotai"; // Import useAtom
 import {
-  useWindowManagement,
   ResizeDirection,
+  useWindowManagement,
 } from "../../hooks/useWindowManagement";
-import { Size, Position } from "../../types"; // Updated path, added Position
+import { Position, Size } from "../../types"; // Updated path, added Position
 import { cn } from "../../lib/utils";
 import {
   focusWindowAtom,
+  minimizeWindowAtom,
   updateWindowPositionSizeAtom,
 } from "../../atoms/windowAtoms"; // Import Jotai atoms
+import { Minus, X } from "lucide-react"; // Import Minus icon
 
 interface WindowProps {
   windowId: string; // Unique identifier for this window instance
@@ -51,6 +53,7 @@ const Window: React.FC<WindowProps> = ({
   // Get Jotai setters for focus and update actions
   const focusWindow = useAtom(focusWindowAtom)[1];
   const updateWindowPositionSize = useAtom(updateWindowPositionSizeAtom)[1];
+  const minimizeWindow = useAtom(minimizeWindowAtom)[1];
 
   // Effect to update dimensions on resize
   useEffect(() => {
@@ -79,28 +82,28 @@ const Window: React.FC<WindowProps> = ({
   // Adjust initial position and size for mobile/tablet
   const adjustedInitialPosition = isMobileOrTablet
     ? {
-        // Position the window to match the menubar's position (respecting parent container padding)
-        x: 0, // The menubar starts at x:0 relative to its container
-        y: 36 + 4, // Menubar height (36px) + 4px gap
-      }
+      // Position the window to match the menubar's position (respecting parent container padding)
+      x: 0, // The menubar starts at x:0 relative to its container
+      y: 36 + 4, // Menubar height (36px) + 4px gap
+    }
     : initialPosition;
 
   const adjustedInitialSize = isMobileOrTablet
     ? {
-        // Match the width of the menubar (full width)
-        width: windowDimensions.width - 2 * 16, // Full width minus padding on both sides (p-4 = 16px)
-        height: Math.min(
-          windowDimensions.height * 0.8,
-          windowDimensions.height - (36 + 4 + 16) // Account for menubar + gap + bottom padding
-        ),
-      }
+      // Match the width of the menubar (full width)
+      width: windowDimensions.width - 2 * 16, // Full width minus padding on both sides (p-4 = 16px)
+      height: Math.min(
+        windowDimensions.height * 0.8,
+        windowDimensions.height - (36 + 4 + 16), // Account for menubar + gap + bottom padding
+      ),
+    }
     : initialSize;
 
   // Callback for the hook to update global state
   const handleInteractionEnd = (
     id: string,
     newPosition: Position,
-    newSize: Size
+    newSize: Size,
   ) => {
     updateWindowPositionSize({ id, position: newPosition, size: newSize });
   };
@@ -211,17 +214,17 @@ const Window: React.FC<WindowProps> = ({
   // Mobile-specific styling
   const mobileWindowStyles = isMobileOrTablet
     ? {
-        borderRadius: "0.375rem", // Match menubar's rounded-md (0.375rem)
-        boxShadow: "0 10px 25px rgba(0, 0, 0, 0.3)",
-        transition: "all 0.2s ease-in-out",
-        // Add border styling to match menubar
-        border: "2px solid var(--secondary)", // Match the menubar's border-secondary border-2
-      }
+      borderRadius: "0.375rem", // Match menubar's rounded-md (0.375rem)
+      boxShadow: "0 10px 25px rgba(0, 0, 0, 0.3)",
+      transition: "all 0.2s ease-in-out",
+      // Add border styling to match menubar
+      border: "2px solid var(--secondary)", // Match the menubar's border-secondary border-2
+    }
     : {};
 
   return (
     <div
-      className={`absolute bg-background border border-secondary rounded-lg shadow-xl flex flex-col overflow-hidden ${
+      className={`absolute bg-background border border-border rounded-lg shadow-xl flex flex-col overflow-hidden ${
         isMobileOrTablet ? "mobile-window" : ""
       }`}
       style={{
@@ -242,36 +245,40 @@ const Window: React.FC<WindowProps> = ({
     >
       {/* Title Bar */}
       <div
-        className={`bg-primary px-3 py-2 border-b border-secondary flex justify-between items-center select-none h-10 rounded-t-md shadow-md ${
+        className={`bg-primary px-3 py-2 border-b border-border flex justify-between items-center select-none h-10 rounded-t-md shadow-md ${
           isMobileOrTablet
             ? "mobile-title-bar px-4 bg-primary rounded-t-[0.375rem]"
             : "cursor-move"
         }`}
         onMouseDown={isMobileOrTablet ? undefined : handleDragStart} // Only allow dragging on desktop
       >
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap text-white">
+        <h2 className="text-sm font-semibold text-primary-foreground truncate">
           {title}
-        </span>
-        <button
-          className={`cursor-pointer bg-destructive text-white rounded-sm w-5 h-5 flex justify-center items-center font-bold text leading-[1px] ml-auto ${
-            isMobileOrTablet ? "w-6 h-6" : ""
-          }`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }} // Prevent focus change on close click
-          title="Close"
-        >
-          X
-        </button>
+        </h2>
+        <div className="flex items-center space-x-1">
+          {/* Minimize Button */}
+          <button
+            onClick={() => minimizeWindow(windowId)}
+            className="p-1 rounded hover:bg-primary/80 text-primary-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label="Minimize window"
+            title="Minimize"
+          >
+            <Minus size={16} />
+          </button>
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-destructive/90 text-primary-foreground focus:outline-none focus:ring-1 focus:ring-destructive"
+            aria-label="Close window"
+            title="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Content Area */}
-      <div
-        className={`p-4 flex-grow overflow-auto bg-card ${
-          isMobileOrTablet ? "mobile-content px-4" : ""
-        }`}
-      >
+      <div className="flex-grow p-1 overflow-auto bg-background text-foreground">
         {children}
       </div>
 

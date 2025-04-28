@@ -13,11 +13,20 @@ export type TaskItem = {
 // Define the shape of the state
 export type TodoListState = TaskItem[];
 
-// Load initial state from localStorage or use default (empty array)
-const initialTasks = loadFeatureState<TodoListState>(FEATURE_KEY) ?? [];
+// Default empty state
+const defaultTasksState: TodoListState = [];
 
-// Create the base atom
-const baseTasksAtom = atom<TodoListState>(initialTasks);
+// Load initial state safely
+const getInitialState = (): TodoListState => {
+  // Only access localStorage on the client
+  if (typeof window === "undefined") {
+    return defaultTasksState;
+  }
+  return loadFeatureState<TodoListState>(FEATURE_KEY) ?? defaultTasksState;
+};
+
+// Create the base atom with safe initialization
+const baseTasksAtom = atom<TodoListState>(getInitialState());
 
 // Create a derived atom that saves to localStorage on change
 export const tasksAtom = atom(
@@ -25,13 +34,17 @@ export const tasksAtom = atom(
   (
     get,
     set,
-    newTasks: TodoListState | ((prevTasks: TodoListState) => TodoListState)
+    newTasks: TodoListState | ((prevTasks: TodoListState) => TodoListState),
   ) => {
-    const updatedTasks =
-      typeof newTasks === "function" ? newTasks(get(baseTasksAtom)) : newTasks;
+    const updatedTasks = typeof newTasks === "function"
+      ? newTasks(get(baseTasksAtom))
+      : newTasks;
     set(baseTasksAtom, updatedTasks);
+    // Only save on the client
+    if (typeof window !== "undefined") {
     saveFeatureState(FEATURE_KEY, updatedTasks);
   }
+  },
 );
 
 // Optional: Add derived atoms for specific actions if needed (often done in component)

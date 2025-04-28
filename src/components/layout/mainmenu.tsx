@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
-import Clock from "../clock";
+// import Clock from "../clock"; // Removed Clock import
+import { ThemeToggle } from "../ui/theme-toggle";
 import { playSound } from "@/lib/utils";
 import { appRegistry } from "@/config/appRegistry";
 import { useAtom } from "jotai";
@@ -82,19 +83,22 @@ export function Mainmenu() {
 
   return (
     <>
-      <Menubar className="bg-primary border-secondary border-2 text-white z-[1500] relative">
+      <Menubar className="fixed top-0 left-0 right-0 bg-stone-100 border-stone-300 border-b text-black dark:bg-neutral-900 dark:border-neutral-700 dark:text-white z-30 shadow-sm h-9 px-2 flex items-center">
         <MenubarMenu>
-          <div className="px-1">
+          <div className="px-1 flex items-center">
             <Image
               src="/icons/icon192.png"
-              alt="coffee"
+              alt="logo"
               width={20}
               height={20}
             />
           </div>
         </MenubarMenu>
         <MenubarMenu>
-          <MenubarTrigger onPointerDown={() => playSound("/sounds/click.mp3")}>
+          <MenubarTrigger
+            className="text-sm hover:bg-stone-200 focus:bg-stone-200 data-[state=open]:bg-stone-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700 dark:data-[state=open]:bg-neutral-700 px-3 py-1.5 rounded"
+            onPointerDown={() => playSound("/sounds/click.mp3")}
+          >
             Menu
           </MenubarTrigger>
           <MenubarContent>
@@ -118,21 +122,26 @@ export function Mainmenu() {
             </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
-        {/* <MenubarMenu>
+        {
+          /* <MenubarMenu>
           <MenubarTrigger onPointerDown={() => playSound("/sounds/click.mp3")}>
             Bookmark
           </MenubarTrigger>
           <MenubarContent>
             <MenubarItem disabled>Coming Soon</MenubarItem>
           </MenubarContent>
-        </MenubarMenu> */}
+        </MenubarMenu> */
+        }
         <MenubarMenu>
-          <MenubarTrigger onPointerDown={() => playSound("/sounds/click.mp3")}>
+          <MenubarTrigger
+            className="text-sm hover:bg-stone-200 focus:bg-stone-200 data-[state=open]:bg-stone-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700 dark:data-[state=open]:bg-neutral-700 px-3 py-1.5 rounded"
+            onPointerDown={() => playSound("/sounds/click.mp3")}
+          >
             About
           </MenubarTrigger>
           <MenubarContent>
             <MenubarItem disabled>
-              WFC OS<MenubarShortcut>v 1.0</MenubarShortcut>
+              たびたび<MenubarShortcut>v 1.0</MenubarShortcut>
             </MenubarItem>
             <MenubarSeparator />
             <MenubarItem
@@ -144,14 +153,17 @@ export function Mainmenu() {
             <MenubarItem
               inset
               onSelect={() =>
-                openUrl("https://github.com/ekmigasari/wfcOS.git")
-              }
+                openUrl("https://github.com/ekmigasari/wfcOS.git")}
             >
               Github<MenubarShortcut>repository</MenubarShortcut>
             </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
-        <Clock />
+        <div className="flex-grow"></div>
+        <div className="mr-2">
+          <ThemeToggle />
+        </div>
+        {/* <Clock /> */} {/* Removed Clock component usage */}
       </Menubar>
 
       {/* Reset Confirmation Dialog */}
@@ -162,10 +174,10 @@ export function Mainmenu() {
           setResetDialogOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-md bg-white border-2 border-secondary z-[2500] shadow">
+        <DialogContent className="sm:max-w-md bg-background border border-border z-[2500] shadow">
           <DialogHeader>
             <DialogTitle className="text-destructive">Reset System</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-muted-foreground">
               This will reset all settings and data to their default values.
               This action cannot be undone.
             </DialogDescription>
@@ -178,7 +190,6 @@ export function Mainmenu() {
                 playSound("/sounds/close.mp3");
                 setResetDialogOpen(false);
               }}
-              className="bg-white hover:bg-gray-300"
             >
               Cancel
             </Button>
@@ -186,7 +197,6 @@ export function Mainmenu() {
               type="button"
               variant="destructive"
               onClick={handleResetConfirm}
-              className="hover:bg-accent"
             >
               Reset
             </Button>

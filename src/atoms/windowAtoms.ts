@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { loadFeatureState, saveFeatureState } from "../utils/storage";
 import { Position, Size } from "../types"; // Assuming types are defined here
+import { appRegistry } from "@/config/appRegistry"; // Import appRegistry for icons
 
 const FEATURE_KEY = "windows";
 
@@ -12,8 +13,8 @@ export interface WindowState {
   position: Position;
   size: Size;
   minSize?: Size;
-  isOpen: boolean; // To track if the window should be rendered
-  isMinimized?: boolean; // Future enhancement?
+  isOpen: boolean; // To track if the window should be rendered (visible)
+  isMinimized: boolean; // NEW: To track minimized state for the taskbar
   zIndex: number; // To manage stacking order
 }
 
@@ -32,23 +33,27 @@ const getNextZIndex = (registry: WindowRegistryState): number => {
 
 // --- Atoms ---
 
-// Create a default empty window registry - using empty object to handle SSR
-const defaultWindowRegistry: WindowRegistryState = {};
+// Default state, ensuring new fields have defaults
+const getDefaultWindowState = (): WindowRegistryState => ({});
 
 // Create initial state atom with safe client-side initialization
 const getInitialState = (): WindowRegistryState => {
-  // Only run localStorage access on the client side
   if (typeof window === "undefined") {
-    return defaultWindowRegistry;
+    return getDefaultWindowState();
   }
-
-  // Load from localStorage only on the client side
-  return (
-    loadFeatureState<WindowRegistryState>(FEATURE_KEY) ?? defaultWindowRegistry
-  );
+  const loaded = loadFeatureState<WindowRegistryState>(FEATURE_KEY);
+  // Ensure loaded state includes the isMinimized flag
+  if (loaded) {
+    Object.keys(loaded).forEach((key) => {
+      if (loaded[key].isMinimized === undefined) {
+        loaded[key].isMinimized = false;
+      }
+    });
+  }
+  return loaded ?? getDefaultWindowState();
 };
 
-// Create the base atom with proper initialization to handle hydration
+// Create the base atom with proper initialization
 const baseWindowsAtom = atom<WindowRegistryState>(getInitialState());
 
 // Create a derived atom that saves to localStorage on change
@@ -59,24 +64,40 @@ export const windowRegistryAtom = atom(
     set,
     newRegistry:
       | WindowRegistryState
-      | ((prevRegistry: WindowRegistryState) => WindowRegistryState)
+      | ((prevRegistry: WindowRegistryState) => WindowRegistryState),
   ) => {
-    const updatedRegistry =
-      typeof newRegistry === "function"
-        ? newRegistry(get(baseWindowsAtom))
-        : newRegistry;
+    const updatedRegistry = typeof newRegistry === "function"
+      ? newRegistry(get(baseWindowsAtom))
+      : newRegistry;
     set(baseWindowsAtom, updatedRegistry);
-    saveFeatureState(FEATURE_KEY, updatedRegistry);
-  }
+    if (typeof window !== "undefined") {
+      saveFeatureState(FEATURE_KEY, updatedRegistry);
+    }
+  },
 );
 
-// Atom to get an array of currently open windows, sorted by zIndex
+// Atom to get an array of currently VISIBLE windows, sorted by zIndex
 export const openWindowsAtom = atom(
   (get) =>
     Object.values(get(windowRegistryAtom))
-      .filter((win) => win.isOpen)
-      .sort((a, b) => a.zIndex - b.zIndex) // Render lower zIndex first (behind)
+      .filter((win) => win.isOpen && !win.isMinimized) // Only show open AND not minimized windows
+      .sort((a, b) => a.zIndex - b.zIndex),
 );
+
+// NEW: Atom to get info for ALL registered windows (for taskbar)
+// Includes minimized windows, excludes closed ones (removed from registry)
+export const taskbarAppsAtom = atom((get) => {
+  const registry = get(windowRegistryAtom);
+  const highestZIndex = getNextZIndex(registry) - 1;
+  return Object.values(registry)
+    // Add icon source and active status
+    .map((win) => ({
+      ...win,
+      iconSrc: appRegistry[win.appId]?.src || "/icons/settings.png", // Fallback icon
+      isActive: win.zIndex === highestZIndex && win.isOpen && !win.isMinimized,
+    }))
+    .sort((a, b) => a.zIndex - b.zIndex); // Or sort by creation time if preferred?
+});
 
 // --- Window Management Action Atoms (Write-only) ---
 
@@ -86,87 +107,119 @@ export const openWindowAtom = atom(
   (
     get,
     set,
-    windowConfig: Omit<
-      WindowState,
-      "isOpen" | "zIndex" | "position" | "size"
-    > & { initialPosition?: Position; initialSize: Size }
+    windowConfig:
+      & Omit<
+        WindowState,
+        "isOpen" | "zIndex" | "position" | "size" | "isMinimized"
+      >
+      & { initialPosition?: Position; initialSize: Size },
   ) => {
     const currentRegistry = get(windowRegistryAtom);
-    const existingWindow = Object.values(currentRegistry).find(
-      (win) => win.appId === windowConfig.appId && win.id === windowConfig.id
-    ); // Find by specific ID if provided, or just appId? Let's require ID for now.
-
-    // const windowIdToFocus = windowConfig.id;
+    const existingWindow = currentRegistry[windowConfig.id];
 
     if (existingWindow) {
-      // If window exists, bring it to front and ensure it's open
+      // If window exists, bring it to front and ensure it's open and not minimized
       set(windowRegistryAtom, (prev) => ({
         ...prev,
         [existingWindow.id]: {
           ...existingWindow,
           isOpen: true,
-          isMinimized: false, // Unminimize if it was
+          isMinimized: false, // Ensure not minimized when opened/focused
           zIndex: getNextZIndex(prev),
         },
       }));
     } else {
       // If window doesn't exist, create it
       const nextZIndex = getNextZIndex(currentRegistry);
-      // Basic centering logic if no position provided - should be improved later
-      const defaultPosition = windowConfig.initialPosition ?? {
-        x: 50 + Math.random() * 100,
-        y: 50 + Math.random() * 100,
-      };
+      const defaultPosition = windowConfig.initialPosition ??
+        { x: 50 + Math.random() * 100, y: 50 + Math.random() * 100 };
       const newWindow: WindowState = {
         ...windowConfig,
         position: defaultPosition,
         size: windowConfig.initialSize,
         isOpen: true,
+        isMinimized: false, // Ensure not minimized initially
         zIndex: nextZIndex,
       };
       set(windowRegistryAtom, (prev) => ({
         ...prev,
         [newWindow.id]: newWindow,
       }));
-      // windowIdToFocus = newWindow.id;
     }
-    // This atom doesn't directly return the focused ID, the caller manages that
-  }
+  },
 );
 
-// Atom to close a window
+// Atom to close a window (removes it from state)
 export const closeWindowAtom = atom(null, (get, set, windowId: string) => {
   set(windowRegistryAtom, (prev) => {
     const newState = { ...prev };
-    if (newState[windowId]) {
-      // Option 1: Mark as closed (keeps state like position/size)
-      newState[windowId] = { ...newState[windowId], isOpen: false };
-      // Option 2: Remove completely (loses state unless saved elsewhere)
-      // delete newState[windowId];
-    }
+    delete newState[windowId]; // Remove completely
     return newState;
   });
-  // Note: We keep the window state (pos/size) even when closed
-  // This allows reopening it in the same place later via openWindowAtom
 });
 
 // Atom to bring a window to the front
 export const focusWindowAtom = atom(null, (get, set, windowId: string) => {
   set(windowRegistryAtom, (prev) => {
     const windowToFocus = prev[windowId];
-    if (!windowToFocus || !windowToFocus.isOpen) return prev; // Don't focus closed/non-existent windows
+    if (!windowToFocus) return prev; // Window doesn't exist
 
-    const maxZIndex = getNextZIndex(prev) - 1; // Get current max zIndex
+    const maxZIndex = getNextZIndex(prev) - 1;
 
-    // Only update if it's not already the top window
-    if (windowToFocus.zIndex < maxZIndex) {
+    // Bring to front and ensure it's visible and not minimized
+    if (
+      windowToFocus.zIndex < maxZIndex || !windowToFocus.isOpen ||
+      windowToFocus.isMinimized
+    ) {
       return {
         ...prev,
-        [windowId]: { ...windowToFocus, zIndex: maxZIndex + 1 }, // Assign new highest zIndex
+        [windowId]: {
+          ...windowToFocus,
+          isOpen: true, // Ensure open
+          isMinimized: false, // Ensure not minimized
+          zIndex: maxZIndex + 1, // Assign new highest zIndex
+        },
       };
     }
-    return prev; // No change needed
+    return prev; // No change needed if already top, open, and not minimized
   });
+});
+
+// NEW: Atom to minimize a window
+export const minimizeWindowAtom = atom(null, (get, set, windowId: string) => {
+  set(windowRegistryAtom, (prev) => {
+    const windowToMinimize = prev[windowId];
+    if (!windowToMinimize || windowToMinimize.isMinimized) return prev; // Already minimized or doesn't exist
+
+    return {
+      ...prev,
+      [windowId]: {
+        ...windowToMinimize,
+        isOpen: false, // Mark as not directly visible
+        isMinimized: true,
+        // Keep zIndex, position, size
+      },
+    };
+  });
+});
+
+// NEW: Atom to handle taskbar icon clicks (toggle minimize/focus)
+export const toggleTaskbarAtom = atom(null, (get, set, windowId: string) => {
+  const registry = get(windowRegistryAtom);
+  const windowState = registry[windowId];
+  if (!windowState) return; // Should not happen
+
+  const maxZIndex = getNextZIndex(registry) - 1;
+  const isTopWindow = windowState.zIndex === maxZIndex && windowState.isOpen &&
+    !windowState.isMinimized;
+
+  if (isTopWindow) {
+    // If it's the top, visible window -> minimize it
+    set(minimizeWindowAtom, windowId);
+  } else {
+    // If it's minimized OR just not the top window -> focus it (which also unminimizes)
+    set(focusWindowAtom, windowId);
+  }
 });
 
 // Atom to update a window's position and size (e.g., after drag/resize)
@@ -175,22 +228,17 @@ export const updateWindowPositionSizeAtom = atom(
   (
     get,
     set,
-    { id, position, size }: { id: string; position: Position; size: Size }
+    { id, position, size }: { id: string; position: Position; size: Size },
   ) => {
     set(windowRegistryAtom, (prev) => {
       const windowToUpdate = prev[id];
       if (!windowToUpdate) return prev;
+      // Ensure it's not minimized when moved/resized?
+      // No, let minimized windows keep their state.
       return {
         ...prev,
         [id]: { ...windowToUpdate, position, size },
       };
-      // Note: Doesn't automatically bring to front, focusWindowAtom handles that
     });
-  }
+  },
 );
-
-// Atom to minimize a window (placeholder for future)
-// export const minimizeWindowAtom = atom(...)
-
-// Atom to maximize a window (placeholder for future)
-// export const maximizeWindowAtom = atom(...)
