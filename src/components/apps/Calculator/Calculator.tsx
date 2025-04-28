@@ -350,8 +350,8 @@ const Calculator: React.FC = () => {
                 }
             }
             return formatted;
-        } catch (e) {
-            return value; // Fallback if formatting fails
+        } catch { // Remove unused 'e'
+            /*(e)*/ return value; // Fallback if formatting fails
         }
     };
 
