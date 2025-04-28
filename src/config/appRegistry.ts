@@ -51,7 +51,7 @@ export const appRegistry: Record<string, AppRegistryEntry> = {
   // },
   todoList: {
     name: "To-do list",
-    src: "/icons/board.png",
+    src: "/icons/to-do.png",
     defaultSize: { width: 400, height: 400 },
     minSize: { width: 300, height: 340 },
     component: TodoList,
