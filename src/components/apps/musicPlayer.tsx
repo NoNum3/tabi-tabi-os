@@ -859,10 +859,11 @@ const MusicPlayer: React.FC = () => {
             </p>
           )
           : (
-            <ul>
+            <ul className="space-y-1">
               {playlist.map((song, index) => (
                 <li
-                  key={song.id + index} // Combine ID and index for potential duplicates
+                  // Use optional chaining and fallback to index if song.id is missing
+                  key={song?.id ?? index}
                   className={cn(
                     "p-2 flex items-center justify-between cursor-pointer border-b border-border",
                     "hover:bg-muted",

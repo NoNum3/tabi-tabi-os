@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import {
   decrementPodomoroTimeAtom,
   DurationSetting,
@@ -36,52 +36,56 @@ import { stopwatchStateAtom } from "../../atoms/stopwatchAtom";
 
 // Global Timer Runner Component
 export const GlobalPodomoroTimer = () => {
-  const [podomoroState] = useAtom(podomoroAtom);
+  // Read necessary state values
+  const { isRunning, timeRemaining } = useAtomValue(podomoroAtom);
+  // Get action setters
   const decrementTime = useAtom(decrementPodomoroTimeAtom)[1];
   const handleCompletion = useAtom(handlePodomoroTickCompletionAtom)[1];
 
-  // Use ref to track if we've handled completion for the current timer
+  // Ref to prevent multiple completion calls
   const completionHandledRef = useRef(false);
 
+  // Effect 1: Handle the timer interval for decrementing time
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    if (!isRunning) {
+      return; // Do nothing if not running
+    }
 
-    // Reset completion flag when timer starts or is reset
-    if (podomoroState.isRunning && podomoroState.timeRemaining > 0) {
-      completionHandledRef.current = false;
+    // Start the interval when isRunning becomes true
+    const intervalId = setInterval(() => {
+      // Directly call the decrement action atom.
+      // It should handle its own logic based on the current state.
+      decrementTime();
+    }, 1000);
 
-      intervalId = setInterval(() => {
-        decrementTime();
-      }, 1000);
-    } // Handle timer completion
-    else if (podomoroState.isRunning && podomoroState.timeRemaining <= 0) {
-      // Clear any running interval first
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
+    // Cleanup function to clear the interval when isRunning becomes false or component unmounts
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isRunning, decrementTime]); // Re-run only if isRunning or decrementTime changes
 
-      // Only handle completion once per timer cycle
+  // Effect 2: Handle the completion logic when time runs out
+  useEffect(() => {
+    // Check if the timer is running and time has reached zero
+    if (isRunning && timeRemaining <= 0) {
+      // Ensure completion is handled only once per cycle
       if (!completionHandledRef.current) {
         completionHandledRef.current = true;
         playSound("/sounds/timeup.mp3");
+        // Call the completion action atom. It should set isRunning to false.
         handleCompletion();
       }
+    } else if (isRunning && timeRemaining > 0) {
+      // Reset the completion flag if the timer is running but time is not yet zero
+      // (e.g., after a reset or mode switch while running)
+      completionHandledRef.current = false;
+    } else if (!isRunning) {
+      // Reset the completion flag if the timer is stopped/paused
+      completionHandledRef.current = false;
     }
+  }, [isRunning, timeRemaining, handleCompletion]); // Re-run when these values change
 
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [
-    podomoroState.isRunning,
-    podomoroState.timeRemaining,
-    podomoroState.mode,
-    decrementTime,
-    handleCompletion,
-  ]);
-
+  // This component doesn't render anything itself
   return null;
 };
 
@@ -352,7 +356,6 @@ const ClockApp: React.FC = () => {
             timerAudioRef.current?.play().catch((e) =>
               console.error("Error playing timer sound:", e)
             );
-            alert("Timer finished!"); // Basic alert
             return 0;
           }
           return nextTime;

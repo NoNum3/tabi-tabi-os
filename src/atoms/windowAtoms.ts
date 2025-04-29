@@ -89,14 +89,17 @@ export const openWindowsAtom = atom(
 export const taskbarAppsAtom = atom((get) => {
   const registry = get(windowRegistryAtom);
   const highestZIndex = getNextZIndex(registry) - 1;
+  // Filter first: Only include windows that are open OR minimized
   return Object.values(registry)
+    .filter((win) => win.isOpen || win.isMinimized)
     // Add icon source and active status
     .map((win) => ({
       ...win,
       iconSrc: appRegistry[win.appId]?.src || "/icons/settings.png", // Fallback icon
+      // isActive is true only if the window is the top-most AND not minimized
       isActive: win.zIndex === highestZIndex && win.isOpen && !win.isMinimized,
     }))
-    .sort((a, b) => a.zIndex - b.zIndex); // Or sort by creation time if preferred?
+    .sort((a, b) => a.zIndex - b.zIndex); // Consider sorting by open order or app ID?
 });
 
 // --- Window Management Action Atoms (Write-only) ---
@@ -195,7 +198,6 @@ export const minimizeWindowAtom = atom(null, (get, set, windowId: string) => {
       ...prev,
       [windowId]: {
         ...windowToMinimize,
-        isOpen: false, // Mark as not directly visible
         isMinimized: true,
         // Keep zIndex, position, size
       },

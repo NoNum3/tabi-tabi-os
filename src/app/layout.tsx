@@ -34,8 +34,8 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <JotaiProvider>{children}</JotaiProvider>
-          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || ""} />
+        <JotaiProvider>{children}</JotaiProvider>
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID || ""} />
         </ThemeProvider>
       </body>
     </html>

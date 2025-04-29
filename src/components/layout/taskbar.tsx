@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useAtom } from "jotai";
 import Image from "next/image";
 import { taskbarAppsAtom, toggleTaskbarAtom } from "@/atoms/windowAtoms";
@@ -15,12 +15,17 @@ import {
 const Taskbar: React.FC = () => {
     const [apps] = useAtom(taskbarAppsAtom);
     const toggleWindow = useAtom(toggleTaskbarAtom)[1];
+    const [hasMounted, setHasMounted] = useState(false);
+
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
 
     return (
         <TooltipProvider delayDuration={100}>
             <div className="fixed bottom-0 left-0 right-0 h-12 bg-background/80 backdrop-blur-md border-t border-border z-[2000] flex items-center justify-center px-4 shadow-lg">
                 <div className="flex items-center space-x-2 overflow-x-auto max-w-full scrollbar-hide">
-                    {apps.map((app) => (
+                    {hasMounted && apps.map((app) => (
                         <Tooltip key={app.id}>
                             <TooltipTrigger asChild>
                                 <button

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAtom } from "jotai"; // Import useAtom
+import { windowRegistryAtom } from "../../atoms/windowAtoms"; // Import base registry
+import { useAtomValue } from "jotai"; // Use useAtomValue for read-only
 import {
   ResizeDirection,
   useWindowManagement,
@@ -41,6 +43,13 @@ const Window: React.FC<WindowProps> = ({
   zIndex,
   isMobileOrTablet,
 }) => {
+  // Get the whole registry state
+  const registry = useAtomValue(windowRegistryAtom);
+  // Find the specific state for this windowId
+  const currentWindowState = registry[windowId];
+  // Get isMinimized state, default to false if window not found (shouldn't happen if isOpen)
+  const isMinimized = currentWindowState?.isMinimized ?? false;
+
   // Add mounted state to handle hydration issues
   const [isMounted, setIsMounted] = useState(false);
 
@@ -239,6 +248,7 @@ const Window: React.FC<WindowProps> = ({
           : "150px",
         minHeight: minSize?.height ? `${minSize.height}px` : "100px",
         zIndex: zIndex, // Apply zIndex from global state
+        display: isMinimized ? "none" : "flex", // Hide if minimized
         ...mobileWindowStyles,
       }}
       onMouseDown={handleWindowFocus} // Bring window to front on click

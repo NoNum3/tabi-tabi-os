@@ -604,7 +604,7 @@ const AmbiencePlayer: React.FC = () => {
               {currentSound?.title || "Select a sound"}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {currentSound?.artist || "Ambience Player"}
+              {currentSound?.title || "Ambience Player"}
             </p>
           </div>
         </div>

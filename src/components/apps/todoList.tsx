@@ -136,15 +136,15 @@ const TodoList = () => {
         <div className="bg-background">
           {tasks.length > 0
             ? (
-              <ul>
+            <ul>
                 {tasks.map((task) => <TaskItem key={task.id} task={task} />)}
-              </ul>
+            </ul>
             )
             : (
               <p className="text-muted-foreground text-center italic text-sm py-2">
-                No tasks
-              </p>
-            )}
+              No tasks
+            </p>
+          )}
         </div>
       )}
     </div>

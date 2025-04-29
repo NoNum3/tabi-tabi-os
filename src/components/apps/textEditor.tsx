@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { saveFeatureState } from "../../utils/storage";
 import {
   defaultEditorSettings,
   EditorSettings,
   loadEditorContent,
   loadEditorSettings,
-  TEXT_EDITOR_SETTINGS_KEY,
-  TEXT_EDITOR_STORAGE_KEY,
 } from "../../atoms/textEditorAtom";
 
 // Shadcn UI Imports
@@ -60,78 +57,35 @@ const TextEditor: React.FC<TextEditorProps> = ({
   initialContent = "",
   editorId = "default",
 }) => {
-  // State: Use useState for instance-specific state, loaded from storage
-  const [content, setContent] = useState<string>("");
+  // State: Only keep settings state managed by React for the toolbar
+  const [content, setContent] = useState<string>(""); // Keep for initial load & blur sync
   const [editorSettings, setEditorSettings] = useState<EditorSettings>(
     defaultEditorSettings,
   );
-
-  const [statusMessage, setStatusMessage] = useState<string>("");
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState<boolean>(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); // Ref for the textarea
 
   // Load state on mount
   useEffect(() => {
       const savedSettings = loadEditorSettings(editorId);
         setEditorSettings(savedSettings);
       const savedContent = loadEditorContent(editorId);
-    setContent(savedContent || initialContent);
+    setContent(savedContent || initialContent); // Set initial content state
+
+    // Set initial value directly on the ref *after* mount if needed,
+    // but defaultValue should handle the initial render.
+    // We might need this if content is loaded async later, but let's rely on defaultValue first.
+    // if (textareaRef.current) {
+    //   textareaRef.current.value = savedContent || initialContent;
+    // }
+
       setInitialLoadDone(true);
-  }, [editorId, initialContent]);
+  }, [editorId, initialContent]); // Rerun if editorId changes
 
-  // Show status message utility
-  const showStatusMessage = useCallback((message: string) => {
-    setStatusMessage(message);
-    setTimeout(() => setStatusMessage(""), 2000);
-  }, []);
-
-  // Save content effect
-  useEffect(() => {
-    if (initialLoadDone) {
-      saveFeatureState(`${TEXT_EDITOR_STORAGE_KEY}_${editorId}`, content);
-    }
-  }, [content, editorId, initialLoadDone]);
-
-  // Save settings effect
-  useEffect(() => {
-    if (initialLoadDone) {
-      saveFeatureState(
-        `${TEXT_EDITOR_SETTINGS_KEY}_${editorId}`,
-        editorSettings,
-      );
-    }
-  }, [editorSettings, editorId, initialLoadDone]);
-
-  // Auto-save effect
-  useEffect(() => {
-    if (!initialLoadDone || editorSettings.autoSaveInterval <= 0) {
-      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
-      return; // Don't setup if disabled or not loaded
-    }
-
-    if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
-
-    autoSaveTimerRef.current = setInterval(() => {
-      // Content is already saved on change by the effect above,
-      // but we can still show a message for auto-save interval
-      // saveFeatureState(`${TEXT_EDITOR_STORAGE_KEY}_${editorId}`, content); // Redundant save?
-      showStatusMessage("Auto-saved");
-    }, editorSettings.autoSaveInterval * 1000);
-
-    return () => {
-      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
-    };
-  }, [
-    editorSettings.autoSaveInterval,
-    editorId,
-    showStatusMessage,
-    initialLoadDone,
-    // content // removed content dependency as it's saved separately
-  ]);
-
-  // Action Handlers (Save, Copy, Clear)
+  // Action Handlers (Save, Copy, Clear) - Read from ref
   const handleSaveToFile = useCallback(() => {
-    const blob = new Blob([content], { type: "text/plain" });
+    const currentContent = textareaRef.current?.value ?? ""; // Read from ref
+    const blob = new Blob([currentContent], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -140,45 +94,65 @@ const TextEditor: React.FC<TextEditorProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showStatusMessage("Content saved to file");
-  }, [content, editorId, showStatusMessage]);
+  }, [editorId]);
 
   const handleCopyToClipboard = useCallback(async () => {
+    const currentContent = textareaRef.current?.value ?? ""; // Read from ref
+    if (!currentContent) return; // Don't copy if empty
     try {
-      await navigator.clipboard.writeText(content);
-      showStatusMessage("Content copied to clipboard!");
+      await navigator.clipboard.writeText(currentContent);
     } catch (err) {
       console.error("Failed to copy text: ", err);
-      showStatusMessage("Failed to copy content!");
     }
-  }, [content, showStatusMessage]);
+  }, []);
 
   const handleClearText = useCallback(() => {
     if (window.confirm("Clear all text? This cannot be undone.")) {
-      setContent("");
-      showStatusMessage("All text cleared");
+      if (textareaRef.current) {
+        textareaRef.current.value = ""; // Clear DOM element directly
+      }
+      setContent(""); // Also clear React state
     }
-  }, [setContent, showStatusMessage]);
+  }, [setContent]);
 
-  // Keyboard Shortcuts
+  // Sync React state when focus leaves the textarea
+  const handleBlur = () => {
+    if (textareaRef.current) {
+      const currentDOMValue = textareaRef.current.value;
+      // Only update state if it's different, to avoid unnecessary re-renders
+      if (currentDOMValue !== content) {
+        setContent(currentDOMValue);
+        // If we wanted to re-introduce saving on blur, it would go here:
+        // saveFeatureState(`${TEXT_EDITOR_CONTENT_FEATURE_KEY}_${editorId}`, currentDOMValue);
+      }
+    }
+  };
+
+  // Keyboard Shortcuts - Read from ref if needed, but save uses ref now
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "s") {
         e.preventDefault();
-        handleSaveToFile();
+        handleSaveToFile(); // Uses ref
       }
-      if (
-        e.ctrlKey && e.key === "c" && window.getSelection()?.toString() === ""
-      ) {
-        e.preventDefault();
-        handleCopyToClipboard();
-      }
+      // Copy shortcut might accidentally trigger if text is selected,
+      // let's remove the check for empty selection for simplicity now.
+      // if (e.ctrlKey && e.key === "c") {
+      //   e.preventDefault();
+      //   handleCopyToClipboard(); // Uses ref
+      // }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleSaveToFile, handleCopyToClipboard]);
+    // Add listener to the textarea itself if possible, otherwise document is okay
+    const currentTextarea = textareaRef.current;
+    currentTextarea?.addEventListener("keydown", handleKeyDown);
+    // document.addEventListener("keydown", handleKeyDown); // Fallback
+    return () => {
+      currentTextarea?.removeEventListener("keydown", handleKeyDown);
+      // document.removeEventListener("keydown", handleKeyDown); // Fallback
+    };
+  }, [handleSaveToFile]); // Removed handleCopyToClipboard from deps
 
-  // Helper to update a setting
+  // Helper to update a setting (remains the same)
   const updateSetting = useCallback(<K extends keyof EditorSettings>(
     key: K,
     value: EditorSettings[K],
@@ -187,7 +161,10 @@ const TextEditor: React.FC<TextEditorProps> = ({
       ...prev,
       [key]: value,
     }));
-  }, []);
+    // If we wanted settings persistence, trigger save here:
+    // const newSettings = { ...editorSettings, [key]: value };
+    // saveFeatureState(`${TEXT_EDITOR_SETTINGS_FEATURE_KEY}_${editorId}`, newSettings);
+  }, [/* editorSettings, editorId */]); // Removed dependencies if not saving settings
 
   // Available Fonts
   const fontOptions = [
@@ -202,6 +179,11 @@ const TextEditor: React.FC<TextEditorProps> = ({
 
   // Font sizes
   const fontSizes = [10, 12, 14, 16, 18, 20, 24, 30, 36];
+
+  // Don't render until initial content/settings are loaded
+  if (!initialLoadDone) {
+    return <div>Loading Editor...</div>; // Or some placeholder
+  }
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -247,7 +229,11 @@ const TextEditor: React.FC<TextEditorProps> = ({
             value={editorSettings.fontFamily}
             onValueChange={(value) => updateSetting("fontFamily", value)}
           >
-            <SelectTrigger className="w-[150px] h-8 text-xs">
+            <SelectTrigger
+              className="w-[150px] h-8 text-xs"
+              id={`${editorId}-fontFamilySelect`}
+              aria-label="Select font family"
+            >
               <SelectValue placeholder="Font" />
             </SelectTrigger>
             <SelectContent>
@@ -269,7 +255,11 @@ const TextEditor: React.FC<TextEditorProps> = ({
             onValueChange={(value) =>
               updateSetting("fontSize", parseInt(value))}
           >
-            <SelectTrigger className="w-[70px] h-8 text-xs ml-1">
+            <SelectTrigger
+              className="w-[70px] h-8 text-xs ml-1"
+              id={`${editorId}-fontSizeSelect`}
+              aria-label="Select font size"
+            >
               <SelectValue placeholder="Size" />
             </SelectTrigger>
             <SelectContent>
@@ -492,18 +482,21 @@ const TextEditor: React.FC<TextEditorProps> = ({
             </div>
         </Toolbar>
 
-        {/* Text Area - Use Shadcn Textarea */}
+        {/* Text Area - Now uncontrolled */}
         <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
+          ref={textareaRef} // Assign the ref
+          key={editorId} // Ensure it resets if ID changes
+          id={`${editorId}-mainContent`}
+          defaultValue={content} // Set initial value ONLY
+          onBlur={handleBlur} // Sync state on blur
           className={cn(
             "flex-grow w-full p-3 text-sm rounded-none border-none focus:outline-none focus:ring-0 resize-none",
             editorSettings.wordWrap
               ? "whitespace-pre-wrap break-words"
               : "whitespace-pre",
             "font-mono", // Default to mono, specific font set by style
-          )}
-          style={{
+        )}
+        style={{
             fontFamily: editorSettings.fontFamily,
             fontSize: `${editorSettings.fontSize}px`,
             lineHeight: editorSettings.lineHeight,
@@ -519,11 +512,13 @@ const TextEditor: React.FC<TextEditorProps> = ({
           wrap={editorSettings.wordWrap ? "soft" : "off"}
         />
 
-        {/* Status Bar */}
-        <div className="w-full p-1 border-t border-border bg-muted text-xs text-muted-foreground text-right h-6 flex items-center justify-end">
+        {/* Status Bar - REMOVED */}
+        {
+          /* <div className="w-full p-1 border-t border-border bg-muted text-xs text-muted-foreground text-right h-6 flex items-center justify-end">
           <span>{statusMessage || "Ready"}</span>
-        </div>
-      </div>
+        </div> */
+        }
+    </div>
     </TooltipProvider>
   );
 };
